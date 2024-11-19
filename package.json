@@ -1,0 +1,23 @@
+{
+  "name": "roast-my-website",
+  "version": "1.0.0",
+  "description": "A Node.js and Express-based REST API for turning URLs to screenshots and running LLM vision models on them",
+  "main": "app.mjs",
+  "scripts": {
+    "start": "node app.mjs"
+  },
+  "author": "Christos Daglis",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.8",
+    "capture-website": "^3.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "nodemailer": "^6.9.15",
+    "openai": "^4.38.2",
+    "validator": "^13.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
