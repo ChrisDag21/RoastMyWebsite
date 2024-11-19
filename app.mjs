@@ -11,7 +11,7 @@ dotenv.config({ path: "./keys.env" });
 
 // Initialize Express app
 const app = express();
-const port = 3001;
+const port = process.env.PORT || 3001;
 
 // Constants for API access
 const openAiKey = process.env.OPENAI_API_KEY;
