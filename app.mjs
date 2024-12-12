@@ -5,7 +5,6 @@ import express from "express";
 import OpenAI from "openai";
 import nodemailer from "nodemailer";
 import validator from "validator";
-import chromium from "@sparticuz/chromium";
 
 // Load environment variables
 dotenv.config({ path: "./keys.env" });
@@ -51,8 +50,6 @@ function validEmail(email) {
 async function getScreenshot(url) {
   try {
     const base64Image = await captureWebsite.base64(url, {
-      executablePath: await chromium.executablePath(),
-      args: chromium.args,
       fullPage: true,
       disableAnimations: true,
     });
