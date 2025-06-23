@@ -194,35 +194,30 @@ async function analyzeImage(base64Image) {
   }
 }
 
+// In your backend's main file
+
 async function getScreenshot(url) {
   try {
     const base64Image = await captureWebsite.base64(url, {
+      // Standard options
       fullPage: true,
       disableAnimations: true,
-
       timeout: 30,
-      delay: 2,
+
+      // This object is passed directly to puppeteer.launch(), as per the docs.
+      launchOptions: {
+        // This tells Puppeteer to use the Chromium we installed on Railway via nixpacks.
+        executablePath: "chromium",
+
+        // These arguments are the official solution recommended in the FAQ
+        // for running in a container/server environment to avoid sandbox errors.
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      },
     });
     return base64Image;
   } catch (error) {
     console.error("Error making capture-website call:", error.message);
-
-    // Check for specific error types and throw custom, user-friendly messages
-    if (error.message.includes("ERR_NAME_NOT_RESOLVED")) {
-      throw new Error(
-        "This website address does not seem to exist. Please check the URL for typos."
-      );
-    }
-    if (error.message.includes("Navigation timeout")) {
-      throw new Error(
-        "This website took too long to load. It might be down, very slow, or protected."
-      );
-    }
-
-    // A fallback for other unexpected errors
-    throw new Error(
-      "Could not capture a screenshot. The website may be offline or blocking automated tools."
-    );
+    throw new Error("Failed to capture screenshot with capture-website.");
   }
 }
 
