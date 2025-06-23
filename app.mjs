@@ -33,7 +33,11 @@ const openai = new OpenAI({
 
 // Middleware
 app.use(helmet()); // Security headers
-app.use(cors());
+app.use(
+  cors({
+    origin: "https://roast-my-website-frontend.vercel.app",
+  })
+);
 app.use(express.json());
 
 // Rate limiting to prevent abuse
