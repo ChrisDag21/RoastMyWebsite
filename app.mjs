@@ -205,18 +205,11 @@ async function analyzeImage(base64Image) {
 async function getScreenshot(url) {
   try {
     const base64Image = await captureWebsite.base64(url, {
-      // Standard options
       fullPage: true,
       disableAnimations: true,
       timeout: 30,
 
-      // This object is passed directly to puppeteer.launch(), as per the docs.
       launchOptions: {
-        // This tells Puppeteer to use the Chromium we installed on Railway via nixpacks.
-        executablePath: "/usr/bin/chromium",
-
-        // These arguments are the official solution recommended in the FAQ
-        // for running in a container/server environment to avoid sandbox errors.
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       },
     });
