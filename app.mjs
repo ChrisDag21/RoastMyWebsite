@@ -225,6 +225,9 @@ async function getScreenshot(url) {
   }
 }
 
+app.get("/", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 // --- MODIFIED: The route now only returns the JSON analysis ---
 app.post("/screenshot", limiter, async (req, res) => {
   console.log("Received request with body:", req.body);
