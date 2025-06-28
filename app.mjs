@@ -7,6 +7,10 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import validator from "validator";
+import ip from "ip";
+const { isPrivate } = ip;
+import { URL } from "url";
+import dns from "dns";
 
 // Load environment variables
 dotenv.config({ path: "./keys.env" });
@@ -42,6 +46,11 @@ app.use(
 );
 app.use(express.json());
 
+// Get the IP whitelist from environment variables
+const whitelist = (process.env.RATE_LIMIT_WHITELIST || "")
+  .split(",")
+  .map((ip) => ip.trim());
+
 // Rate limiting to prevent abuse
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -50,6 +59,10 @@ const limiter = rateLimit({
   legacyHeaders: false,
   message: {
     error: "Are you trying to bankrupt me? Slow down!",
+  },
+  skip: (req) => {
+    const clientIp = req.ip;
+    return whitelist.includes(clientIp);
   },
 });
 
@@ -150,6 +163,16 @@ const roastSchema = {
 //   }
 // }
 
+async function isPublicUrl(urlToTest) {
+  try {
+    const { hostname } = new URL(urlToTest);
+    const { address } = await dns.promises.lookup(hostname);
+    return !isPrivate(address);
+  } catch (error) {
+    return false; // Hostname couldn't be resolved
+  }
+}
+
 function validURL(str) {
   // Use validator.js to check if the URL is valid
   return validator.isURL(str, {
@@ -239,6 +262,13 @@ app.post("/screenshot", limiter, async (req, res) => {
     );
   }
 
+  const isPublic = await isPublicUrl(url);
+  if (!isPublic) {
+    return res.status(400).json({
+      error: "The provided URL is not publicly accessible or is a private IP.",
+    });
+  }
+
   // --- Email validation commented out ---
   // const { email } = req.body;
   // if (!email || !validEmail(email)) {
@@ -250,7 +280,6 @@ app.post("/screenshot", limiter, async (req, res) => {
     console.log("Image captured successfully.");
 
     const analysisResult = await analyzeImage(base64Image);
-    console.log("Analysis received:", analysisResult);
 
     // --- All email sending logic is commented out ---
     /*
@@ -269,7 +298,13 @@ app.post("/screenshot", limiter, async (req, res) => {
       screenshot: base64Image,
     };
 
-    console.log("Final response object created:", finalResponse);
+    const consoleResponse = {
+      url,
+
+      analysis: analysisObject,
+    };
+
+    console.log("Final response object created:", consoleResponse);
 
     // Directly return the analysis JSON object.
     res.json(finalResponse);
