@@ -7,8 +7,7 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import validator from "validator";
-import ip from "ip";
-const { isPrivate } = ip;
+import ipaddr from "ipaddr.js";
 import { URL } from "url";
 import dns from "dns";
 
@@ -167,7 +166,8 @@ async function isPublicUrl(urlToTest) {
   try {
     const { hostname } = new URL(urlToTest);
     const { address } = await dns.promises.lookup(hostname);
-    return !isPrivate(address);
+    const addr = ipaddr.parse(address);
+    return addr.range() !== 'unspecified' && addr.range() !== 'loopback' && !addr.isPrivate();
   } catch (error) {
     return false; // Hostname couldn't be resolved
   }
