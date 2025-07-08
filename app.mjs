@@ -44,6 +44,7 @@ app.use(
       "https://roast-my-website-frontend.vercel.app",
       "https://uxcourt.com",
       "https://www.uxcourt.com",
+      "http://localhost:3000", // Local development
     ],
   })
 );
