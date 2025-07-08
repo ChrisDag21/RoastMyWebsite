@@ -40,7 +40,11 @@ app.set("trust proxy", 1);
 app.use(helmet()); // Security headers
 app.use(
   cors({
-    origin: "https://roast-my-website-frontend.vercel.app",
+    origin: [
+      "https://roast-my-website-frontend.vercel.app",
+      "https://uxcourt.com",
+      "https://www.uxcourt.com",
+    ],
   })
 );
 app.use(express.json());
@@ -167,7 +171,11 @@ async function isPublicUrl(urlToTest) {
     const { hostname } = new URL(urlToTest);
     const { address } = await dns.promises.lookup(hostname);
     const addr = ipaddr.parse(address);
-    return addr.range() !== 'unspecified' && addr.range() !== 'loopback' && !addr.isPrivate();
+    return (
+      addr.range() !== "unspecified" &&
+      addr.range() !== "loopback" &&
+      !addr.isPrivate()
+    );
   } catch (error) {
     return false; // Hostname couldn't be resolved
   }
