@@ -7,9 +7,6 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import validator from "validator";
-import ipaddr from "ipaddr.js";
-import { URL } from "url";
-import dns from "dns";
 
 // Load environment variables
 dotenv.config({ path: "./keys.env" });
@@ -167,21 +164,6 @@ const roastSchema = {
 //   }
 // }
 
-async function isPublicUrl(urlToTest) {
-  try {
-    const { hostname } = new URL(urlToTest);
-    const { address } = await dns.promises.lookup(hostname);
-    const addr = ipaddr.parse(address);
-    return (
-      addr.range() !== "unspecified" &&
-      addr.range() !== "loopback" &&
-      !addr.isPrivate()
-    );
-  } catch (error) {
-    return false; // Hostname couldn't be resolved
-  }
-}
-
 function validURL(str) {
   // Use validator.js to check if the URL is valid
   return validator.isURL(str, {
@@ -269,13 +251,6 @@ app.post("/screenshot", limiter, async (req, res) => {
               "Invalid URL format. A valid URL (including http:// or https://) is required.",
           }
     );
-  }
-
-  const isPublic = await isPublicUrl(url);
-  if (!isPublic) {
-    return res.status(400).json({
-      error: "The provided URL is not publicly accessible or is a private IP.",
-    });
   }
 
   // --- Email validation commented out ---
