@@ -304,8 +304,52 @@ async function getScreenshotBuffer(url) {
 app.get("/", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
-// MODIFIED: Simplified route for public roasts
-app.post("/screenshot", limiter, async (req, res) => {
+
+app.get("/roasts", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("roasts")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(2);
+
+    if (error) throw error;
+
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("Error fetching roasts:", error.message);
+    res.status(500).json({ error: "Failed to fetch roasts." });
+  }
+});
+
+app.get("/roasts/:id", async (req, res) => {
+  const { id } = req.params;
+
+  // Validate that the provided ID is a valid UUID format
+  if (!validator.isUUID(id)) {
+    return res.status(400).json({ error: "Invalid roast ID format." });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("roasts")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      console.error("Error fetching single roast:", error.message);
+      return res.status(404).json({ error: "Roast not found." });
+    }
+
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("Error processing request:", error.message);
+    res.status(500).json({ error: "An unexpected error occurred." });
+  }
+});
+
+app.post("/roast", limiter, async (req, res) => {
   console.log("Received public roast request for:", req.body.url);
   const { url } = req.body; // Only the URL is needed now
 
@@ -363,9 +407,6 @@ app.post("/screenshot", limiter, async (req, res) => {
     if (insertError) throw insertError;
     console.log("Roast saved to database. Sending response.");
 
-    // 6. Send Final Response
-    // The frontend can now use insertData.id to build the unique URL,
-    // e.g., yoursite.com/roast/a1b2-c3d4...
     res.status(200).json(insertData);
   } catch (error) {
     console.error("Error processing request:", error.message);
@@ -373,7 +414,6 @@ app.post("/screenshot", limiter, async (req, res) => {
   }
 });
 
-// Start the server (unchanged)
 app.listen(port, "0.0.0.0", () =>
   console.log(`Server is listening on port:${port}`)
 );
