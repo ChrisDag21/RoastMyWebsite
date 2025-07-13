@@ -7,9 +7,12 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import validator from "validator";
+import crypto from "crypto";
 
 // Load environment variables
 dotenv.config({ path: "./keys.env" });
+
+import { supabase } from "./supabaseClient.mjs";
 
 // Initialize Express app
 const app = express();
@@ -173,14 +176,14 @@ function validURL(str) {
   });
 }
 
-// analyzeImage function (unchanged)
+// analyzeImage function
 async function analyzeImage(base64Image) {
   try {
     const prompt =
       "You are a witty and sarcastic web design expert. Analyze the provided website screenshot and return your analysis in the specified JSON format. Your roast should be funny but your advice must be genuinely helpful.";
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-4.1", // Keeping your model name to see the specific error it returns
       messages: [
         {
           role: "user",
@@ -198,7 +201,7 @@ async function analyzeImage(base64Image) {
         json_schema: {
           name: "RoastAnalysis",
           schema: roastSchema,
-          strict: true, // Ensure strict adherence to the schema
+          strict: true,
         },
       },
     });
@@ -206,104 +209,167 @@ async function analyzeImage(base64Image) {
     const analysisResult = response.choices[0].message.content;
     return analysisResult;
   } catch (error) {
-    console.error(
-      "Failed to analyze screenshot with OpenAI Vision:",
-      error.message
+    // --- ENHANCED ERROR LOGGING ---
+    console.error("\n--- FULL OPENAI API ERROR LOG ---");
+
+    // The openai-node library provides detailed error objects.
+    // This will print the HTTP status and the exact error body from OpenAI.
+    if (error.response) {
+      console.error("STATUS:", error.response.status);
+      console.error("DATA:", JSON.stringify(error.response.data, null, 2));
+      console.error("HEADERS:", error.response.headers);
+    } else {
+      // For non-API errors (e.g., network issues)
+      console.error("An unexpected error occurred:", error.message);
+    }
+
+    console.error("--- END OF ERROR LOG ---\n");
+    // --- END OF ENHANCED LOGGING ---
+
+    throw new Error(
+      "Failed to analyze screenshot with OpenAI Vision. See server logs for full details."
     );
-    throw new Error("Failed to analyze screenshot with OpenAI Vision.");
   }
 }
 
-// In your backend's main file
+// async function oldGetScreenshot(url) {
+//   try {
+//     const base64Image = await captureWebsite.base64(url, {
+//       fullPage: true,
+//       disableAnimations: true,
+//       timeout: 40,
 
-async function getScreenshot(url) {
+//       launchOptions: {
+//         args: ["--no-sandbox", "--disable-setuid-sandbox"],
+//       },
+//       beforeScreenshot: async (page) => {
+//         try {
+//           await page.waitForNetworkIdle({
+//             idleTime: 500,
+//             timeout: 30000,
+//           });
+//         } catch (error) {
+//           console.error("Error waiting for network idle:", error.message);
+//           throw new Error("Network idle timeout exceeded.");
+//         }
+//       },
+//     });
+//     return base64Image;
+//   } catch (error) {
+//     console.error("Error making capture-website call:", error.message);
+//     throw new Error("Failed to capture screenshot with capture-website.");
+//   }
+// }
+async function getScreenshotBuffer(url) {
   try {
-    const base64Image = await captureWebsite.base64(url, {
+    // Return the raw image buffer for efficient uploading
+    const buffer = await captureWebsite.buffer(url, {
       fullPage: true,
       disableAnimations: true,
-      timeout: 30,
-
+      timeout: 60000, // 60-second timeout
       launchOptions: {
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       },
+      beforeScreenshot: async (page) => {
+        try {
+          const bodyHandle = await page.$("body");
+          const { height } = await bodyHandle.boundingBox();
+          await bodyHandle.dispose();
+          const viewportHeight = page.viewport().height;
+          let viewportIncr = 0;
+          while (viewportIncr + viewportHeight < height) {
+            await page.evaluate(
+              (_vh) => window.scrollBy(0, _vh),
+              viewportHeight
+            );
+            await new Promise((r) => setTimeout(r, 300));
+            viewportIncr += viewportHeight;
+          }
+          await page.evaluate(() =>
+            window.scrollTo(0, document.body.scrollHeight)
+          );
+          await page.waitForNetworkIdle({ idleTime: 500, timeout: 45000 });
+        } catch (error) {
+          console.log(`Auto-scrolling failed for ${url}: ${error.message}`);
+        }
+      },
     });
-    return base64Image;
+    return buffer;
   } catch (error) {
     console.error("Error making capture-website call:", error.message);
-    throw new Error("Failed to capture screenshot with capture-website.");
+    throw new Error("Failed to capture screenshot.");
   }
 }
 
 app.get("/", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
-// --- MODIFIED: The route now only returns the JSON analysis ---
+// MODIFIED: Simplified route for public roasts
 app.post("/screenshot", limiter, async (req, res) => {
-  console.log("Received request with body:", req.body);
-  const { url } = req.body; // Only URL is needed now
+  console.log("Received public roast request for:", req.body.url);
+  const { url } = req.body; // Only the URL is needed now
 
-  if (!url || typeof url !== "string" || url.length > 2048 || !validURL(url)) {
-    return res.status(400).json(
-      !url
-        ? { error: "URL is required." }
-        : {
-            error:
-              "Invalid URL format. A valid URL (including http:// or https://) is required.",
-          }
-    );
+  // 1. Validate Input
+  if (!url || !validURL(url)) {
+    return res.status(400).json({ error: "A valid URL is required." });
   }
 
-  // --- Email validation commented out ---
-  // const { email } = req.body;
-  // if (!email || !validEmail(email)) {
-  //   return res.status(400).json(!email ? { error: "Email is required." } : { error: "Invalid email format." });
-  // }
-
   try {
-    const base64Image = await getScreenshot(url);
-    console.log("Image captured successfully.");
+    // 2. Get Screenshot
+    const screenshotBuffer = await getScreenshotBuffer(url);
+    const base64Image = screenshotBuffer.toString("base64");
+    console.log("Screenshot captured.");
 
-    const analysisResult = await analyzeImage(base64Image);
+    // 3. Perform Concurrent Operations (Upload + Analysis)
+    const uniqueId = crypto.randomUUID(); // Create a unique identifier for the roast
+    console.log(
+      "Starting parallel tasks: Uploading to Supabase and Analyzing with OpenAI..."
+    );
+    const [uploadResult, analysisResult] = await Promise.all([
+      // Task 1: Upload screenshot to a public path
+      supabase.storage
+        .from("screenshots")
+        .upload(`public/${uniqueId}.png`, screenshotBuffer, {
+          contentType: "image/png",
+          cacheControl: "3600",
+        }),
+      // Task 2: Get roast analysis from OpenAI
+      analyzeImage(base64Image),
+    ]);
 
-    // --- All email sending logic is commented out ---
-    /*
-    const { roast, constructiveAdvice, overallScore, designEra, trustworthinessScore, colorPaletteAnalysis } = analysisResult;
-    const ctaText = `...`;
-    const emailBody = `...`;
-    const mailOptions = { ... };
-    const info = await transporter.sendMail(mailOptions);
-    console.log("Email sent:", info.response);
-    */
+    // 4. Process Results
+    const { data: uploadData, error: uploadError } = uploadResult;
+    if (uploadError) throw uploadError;
+    console.log("Screenshot uploaded to Supabase.");
 
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("screenshots").getPublicUrl(uploadData.path);
     const analysisObject = JSON.parse(analysisResult);
+    console.log("AI analysis complete.");
 
-    const finalResponse = {
-      analysis: analysisObject,
-      screenshot: base64Image,
-    };
+    // 5. Save Everything to the Database (without a user_id)
+    const { data: insertData, error: insertError } = await supabase
+      .from("roasts")
+      .insert({
+        id: uniqueId, // Use the same UUID for the primary key
+        url: url,
+        roast_json: analysisObject,
+        screenshot_url: publicUrl,
+      })
+      .select()
+      .single();
 
-    const consoleResponse = {
-      url,
+    if (insertError) throw insertError;
+    console.log("Roast saved to database. Sending response.");
 
-      analysis: analysisObject,
-    };
-
-    console.log("Final response object created:", consoleResponse);
-
-    // Directly return the analysis JSON object.
-    res.json(finalResponse);
+    // 6. Send Final Response
+    // The frontend can now use insertData.id to build the unique URL,
+    // e.g., yoursite.com/roast/a1b2-c3d4...
+    res.status(200).json(insertData);
   } catch (error) {
     console.error("Error processing request:", error.message);
-    if (
-      error.message.includes("website address does not seem to exist") ||
-      error.message.includes("website took too long to load") ||
-      error.message.includes("Could not capture a screenshot")
-    ) {
-      return res.status(400).json({ error: error.message });
-    }
-    res
-      .status(500)
-      .json({ error: "An unexpected error occurred. Please try again later." });
+    res.status(500).json({ error: "An unexpected error occurred." });
   }
 });
 
