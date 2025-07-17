@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import validator from "validator";
 import crypto from "crypto";
+import sharp from "sharp";
 
 // Load environment variables
 dotenv.config({ path: "./keys.env" });
@@ -311,7 +312,7 @@ app.get("/roasts", async (req, res) => {
       .from("roasts")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(2);
+      .limit(3);
 
     if (error) throw error;
 
@@ -361,20 +362,42 @@ app.post("/roast", limiter, async (req, res) => {
   try {
     // 2. Get Screenshot
     const screenshotBuffer = await getScreenshotBuffer(url);
-    const base64Image = screenshotBuffer.toString("base64");
     console.log("Screenshot captured.");
+
+    console.log(
+      `Original screenshot size: ${(
+        screenshotBuffer.length /
+        1024 /
+        1024
+      ).toFixed(2)} MB`
+    );
+
+    const compressedImageBuffer = await sharp(screenshotBuffer)
+      .resize({ width: 1280 })
+      .webp({ quality: 80 })
+      .toBuffer();
+    console.log(
+      `Compressed screenshot size: ${(
+        compressedImageBuffer.length /
+        1024 /
+        1024
+      ).toFixed(2)} MB`
+    );
 
     // 3. Perform Concurrent Operations (Upload + Analysis)
     const uniqueId = crypto.randomUUID(); // Create a unique identifier for the roast
     console.log(
       "Starting parallel tasks: Uploading to Supabase and Analyzing with OpenAI..."
     );
+
+    const base64Image = compressedImageBuffer.toString("base64");
+
     const [uploadResult, analysisResult] = await Promise.all([
       // Task 1: Upload screenshot to a public path
       supabase.storage
         .from("screenshots")
-        .upload(`public/${uniqueId}.png`, screenshotBuffer, {
-          contentType: "image/png",
+        .upload(`public/${uniqueId}.webp`, compressedImageBuffer, {
+          contentType: "image/webp",
           cacheControl: "3600",
         }),
       // Task 2: Get roast analysis from OpenAI
