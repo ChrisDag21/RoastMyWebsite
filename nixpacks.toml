@@ -1,2 +1,17 @@
+# nixpacks.toml
+
 [phases.setup]
-pkgs = ["pkgs.chromium"]
+
+pkgs = ["pkgs.chromium", "pkgs.nodejs-18_x"]
+
+[phases.install]
+
+cmds = ["npm ci --production"]
+
+[start]
+
+cmd = "node app.mjs"
+
+[variables]
+
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
