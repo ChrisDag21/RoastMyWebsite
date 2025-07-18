@@ -269,6 +269,7 @@ async function getScreenshotBuffer(url) {
       disableAnimations: true,
       timeout: 60000, // 60-second timeout
       launchOptions: {
+        executablePath: "chromium",
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       },
       beforeScreenshot: async (page) => {
