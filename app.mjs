@@ -21,6 +21,7 @@ const port = process.env.PORT || 3001;
 
 // Constants for API access
 const openAiKey = process.env.OPENAI_API_KEY;
+const apiFlashKey = process.env.APIFLASH_API_KEY;
 // const emailUser = process.env.EMAIL_USER; // Email functionality commented out
 // const emailPass = process.env.EMAIL_PASS; // Email functionality commented out
 
@@ -233,74 +234,35 @@ async function analyzeImage(base64Image) {
   }
 }
 
-// async function oldGetScreenshot(url) {
-//   try {
-//     const base64Image = await captureWebsite.base64(url, {
-//       fullPage: true,
-//       disableAnimations: true,
-//       timeout: 40,
-
-//       launchOptions: {
-//         args: ["--no-sandbox", "--disable-setuid-sandbox"],
-//       },
-//       beforeScreenshot: async (page) => {
-//         try {
-//           await page.waitForNetworkIdle({
-//             idleTime: 500,
-//             timeout: 30000,
-//           });
-//         } catch (error) {
-//           console.error("Error waiting for network idle:", error.message);
-//           throw new Error("Network idle timeout exceeded.");
-//         }
-//       },
-//     });
-//     return base64Image;
-//   } catch (error) {
-//     console.error("Error making capture-website call:", error.message);
-//     throw new Error("Failed to capture screenshot with capture-website.");
-//   }
-// }
-async function getScreenshotBuffer(url) {
-  try {
-    // Return the raw image buffer for efficient uploading
-    const buffer = await captureWebsite.buffer(url, {
-      fullPage: true,
-      disableAnimations: true,
-      timeout: 60000, // 60-second timeout
-      launchOptions: {
-        executablePath: "chromium",
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      },
-      beforeScreenshot: async (page) => {
-        try {
-          const bodyHandle = await page.$("body");
-          const { height } = await bodyHandle.boundingBox();
-          await bodyHandle.dispose();
-          const viewportHeight = page.viewport().height;
-          let viewportIncr = 0;
-          while (viewportIncr + viewportHeight < height) {
-            await page.evaluate(
-              (_vh) => window.scrollBy(0, _vh),
-              viewportHeight
-            );
-            await new Promise((r) => setTimeout(r, 300));
-            viewportIncr += viewportHeight;
-          }
-          await page.evaluate(() =>
-            window.scrollTo(0, document.body.scrollHeight)
-          );
-          await page.waitForNetworkIdle({ idleTime: 500, timeout: 45000 });
-        } catch (error) {
-          console.log(`Auto-scrolling failed for ${url}: ${error.message}`);
-        }
-      },
-    });
-    return buffer;
-  } catch (error) {
-    console.error("Error making capture-website call:", error.message);
-    throw new Error("Failed to capture screenshot.");
+async function getScreenshotFromAPI(targetUrl) {
+  if (!apiFlashKey) {
+    throw new Error("APIFlash API key is not configured.");
   }
+
+  console.log("Requesting screenshot from APIFlash...");
+
+  const apiUrl = `https://api.apiflash.com/v1/urltoimage
+?access_key=${apiFlashKey}
+&url=${encodeURIComponent(targetUrl)}
+&format=webp
+&width=1280
+&full_page=true
+&quality=80
+&scroll_page=true
+&no_cookie_banners=true
+&no_ads=true`;
+
+  const response = await fetch(apiUrl);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("APIFlash Error:", errorText);
+    throw new Error("Failed to capture screenshot via APIFlash.");
+  }
+
+  // APIFlash returns the image directly, so we get its buffer
+  const imageBuffer = await response.arrayBuffer();
+  return Buffer.from(imageBuffer);
 }
 
 app.get("/", (req, res) => {
@@ -389,7 +351,7 @@ app.post("/roast", limiter, async (req, res) => {
 
   try {
     // 2. Get Screenshot
-    const screenshotBuffer = await getScreenshotBuffer(url);
+    const screenshotBuffer = await getScreenshotFromAPI(url);
     console.log("Screenshot captured.");
 
     console.log(
