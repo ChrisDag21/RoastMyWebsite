@@ -1,6 +1,5 @@
 // Import dependencies
 import dotenv from "dotenv";
-import captureWebsite from "capture-website";
 import express from "express";
 import OpenAI from "openai";
 import cors from "cors";
