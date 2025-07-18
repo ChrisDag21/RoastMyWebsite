@@ -350,9 +350,36 @@ app.get("/roasts/:id", async (req, res) => {
   }
 });
 
+app.get("/roasts/mine/:visitorId", async (req, res) => {
+  const { visitorId } = req.params;
+  if (!visitorId || !validator.isUUID(visitorId)) {
+    return res.status(400).json({ error: "Invalid visitor ID format." });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("roasts")
+      .select("*")
+      .eq("visitor_id", visitorId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching visitor roasts:", error.message);
+      return res
+        .status(404)
+        .json({ error: "No roasts found for this visitor." });
+    }
+
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("Error processing request:", error.message);
+    res.status(500).json({ error: "Failed to fetch visitor roasts." });
+  }
+});
+
 app.post("/roast", limiter, async (req, res) => {
   console.log("Received public roast request for:", req.body.url);
-  const { url } = req.body; // Only the URL is needed now
+  const { url, visitorId } = req.body; // Only the URL is needed now
 
   // 1. Validate Input
   if (!url || !validURL(url)) {
@@ -419,10 +446,11 @@ app.post("/roast", limiter, async (req, res) => {
     const { data: insertData, error: insertError } = await supabase
       .from("roasts")
       .insert({
-        id: uniqueId, // Use the same UUID for the primary key
+        id: uniqueId,
         url: url,
         roast_json: analysisObject,
         screenshot_url: publicUrl,
+        visitor_id: visitorId || null,
       })
       .select()
       .single();
