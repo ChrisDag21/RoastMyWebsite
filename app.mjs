@@ -273,6 +273,7 @@ app.get("/roasts", async (req, res) => {
     const { data, error } = await supabase
       .from("roasts")
       .select("*")
+      .eq("is_featured", true)
       .order("created_at", { ascending: false })
       .limit(3);
 
