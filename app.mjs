@@ -286,30 +286,21 @@ app.get("/roasts", async (req, res) => {
   }
 });
 
-app.get("/roasts/:id", async (req, res) => {
-  const { id } = req.params;
-
-  // Validate that the provided ID is a valid UUID format
-  if (!validator.isUUID(id)) {
-    return res.status(400).json({ error: "Invalid roast ID format." });
-  }
-
+app.get("/roasts/wall-of-shame", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("roasts")
       .select("*")
-      .eq("id", id)
-      .single();
+      .eq("is_featured", false)
+      .order("roast_json->>theVerdict", { ascending: true })
+      .limit(30);
 
-    if (error) {
-      console.error("Error fetching single roast:", error.message);
-      return res.status(404).json({ error: "Roast not found." });
-    }
+    if (error) throw error;
 
     res.status(200).json(data);
   } catch (error) {
-    console.error("Error processing request:", error.message);
-    res.status(500).json({ error: "An unexpected error occurred." });
+    console.error("Error fetching wall of shame:", error.message);
+    res.status(500).json({ error: "Failed to fetch wall of shame." });
   }
 });
 
@@ -340,18 +331,55 @@ app.get("/roasts/mine/:visitorId", async (req, res) => {
   }
 });
 
-app.post("/roast", limiter, async (req, res) => {
-  console.log("Received public roast request for:", req.body.url);
-  const { url, visitorId } = req.body; // Only the URL is needed now
+app.get("/roasts/:id", async (req, res) => {
+  const { id } = req.params;
 
-  // 1. Validate Input
-  if (!url || !validURL(url)) {
-    return res.status(400).json({ error: "A valid URL is required." });
+  // Validate that the provided ID is a valid UUID format
+  if (!validator.isUUID(id)) {
+    return res.status(400).json({ error: "Invalid roast ID format." });
   }
 
   try {
+    const { data, error } = await supabase
+      .from("roasts")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      console.error("Error fetching single roast:", error.message);
+      return res.status(404).json({ error: "Roast not found." });
+    }
+
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("Error processing request:", error.message);
+    res.status(500).json({ error: "An unexpected error occurred." });
+  }
+});
+
+app.post("/roast", limiter, async (req, res) => {
+  const { url, visitorId } = req.body;
+
+  // 1. Validate Input
+  if (!url) {
+    return res.status(400).json({ error: "A URL is required." });
+  }
+
+  let normalizedUrl = url.trim();
+  if (!/^https?:\/\//i.test(normalizedUrl)) {
+    normalizedUrl = `https://${normalizedUrl}`;
+  }
+
+  if (!validURL(normalizedUrl)) {
+    return res.status(400).json({ error: "A valid URL is required." });
+  }
+
+  console.log("Received public roast request for:", normalizedUrl);
+
+  try {
     // 2. Get Screenshot
-    const screenshotBuffer = await getScreenshotFromAPI(url);
+    const screenshotBuffer = await getScreenshotFromAPI(normalizedUrl);
     console.log("Screenshot captured.");
 
     console.log(
@@ -410,7 +438,7 @@ app.post("/roast", limiter, async (req, res) => {
       .from("roasts")
       .insert({
         id: uniqueId,
-        url: url,
+        url: normalizedUrl,
         roast_json: analysisObject,
         screenshot_url: publicUrl,
         visitor_id: visitorId || null,
